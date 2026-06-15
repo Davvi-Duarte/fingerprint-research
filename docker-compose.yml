@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
@@ -11,7 +9,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fpuser} -d ${POSTGRES_DB:-fingerprints_db}"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-fpuser} -d ${POSTGRES_DB:-fingerprints_db}
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,21 +28,19 @@ services:
       FLASK_ENV: ${FLASK_ENV:-production}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-fpuser}:${POSTGRES_PASSWORD:-fppassword}@db:5432/${POSTGRES_DB:-fingerprints_db}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:80}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       ALLOW_RAW_EXPORT: ${ALLOW_RAW_EXPORT:-false}
-    ports:
-      - "${BACKEND_PORT:-5000}:5000"
+    expose:
+      - "5000"
 
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-80}:80"
 
 volumes:
   pgdata:
