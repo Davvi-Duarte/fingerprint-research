@@ -1,21 +1,26 @@
-import type { FingerprintPayload, ApiSubmitResponse, ApiError } from "../types";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
+import type {
+  FingerprintPayload,
+  ApiSubmitResponse,
+  ApiError,
+} from "../types";
 
 export async function submitFingerprint(
   payload: FingerprintPayload
 ): Promise<ApiSubmitResponse> {
-  const response = await fetch(`${API_URL}/api/fingerprints`, {
+  const response = await fetch("/api/fingerprints", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    const err: ApiError = await response.json().catch(() => ({
+    const error: ApiError = await response.json().catch(() => ({
       error: `HTTP ${response.status}: ${response.statusText}`,
     }));
-    throw new Error(err.error ?? "Unknown error from server.");
+
+    throw new Error(error.error ?? "Erro ao enviar a coleta.");
   }
 
   return response.json() as Promise<ApiSubmitResponse>;
@@ -23,8 +28,8 @@ export async function submitFingerprint(
 
 export async function checkHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_URL}/health`);
-    return res.ok;
+    const response = await fetch("/health");
+    return response.ok;
   } catch {
     return false;
   }
