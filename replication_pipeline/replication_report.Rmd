@@ -1,0 +1,222 @@
+---
+title: "Relatório da replicação do método de identificação por browser fingerprint"
+subtitle: "Seleção de atributos e K-vizinhos mais próximos"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+params:
+  results_dir: "data/replication/results"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width = 9, fig.height = 5.5)
+library(tidyverse)
+library(knitr)
+library(scales)
+```
+
+# Objetivo
+
+Este relatório apresenta os dados necessários para comparar a replicação com o experimento descrito no artigo. O conjunto contém dez participantes anonimizados e seis coletas por participante. A avaliação utiliza validação leave-one-out, isto é, cada coleta é testada uma vez enquanto as demais formam a base de treinamento.
+
+# Leitura dos resultados
+
+```{r leitura}
+dir_resultados <- params$results_dir
+arquivos <- c(
+  "feature_selection.csv",
+  "knn_summary_by_k.csv",
+  "knn_predictions.csv",
+  "confusion_matrix_k1.csv",
+  "selected_feature_values.csv"
+)
+
+faltantes <- arquivos[!file.exists(file.path(dir_resultados, arquivos))]
+if (length(faltantes) > 0) {
+  stop(paste("Arquivos ausentes:", paste(faltantes, collapse = ", ")))
+}
+
+features <- read_csv(file.path(dir_resultados, "feature_selection.csv"),
+                     show_col_types = FALSE)
+resumo_k <- read_csv(file.path(dir_resultados, "knn_summary_by_k.csv"),
+                     show_col_types = FALSE)
+predicoes <- read_csv(file.path(dir_resultados, "knn_predictions.csv"),
+                      show_col_types = FALSE)
+confusao <- read_csv(file.path(dir_resultados, "confusion_matrix_k1.csv"),
+                     show_col_types = FALSE)
+valores <- read_csv(file.path(dir_resultados, "selected_feature_values.csv"),
+                    show_col_types = FALSE)
+```
+
+# Visão geral
+
+```{r visao-geral}
+visao <- tibble(
+  metrica = c("Participantes", "Coletas", "Coletas por participante",
+              "Features utilizadas", "Valores de K avaliados"),
+  valor = c(
+    n_distinct(valores$participant_id),
+    n_distinct(valores$collection_id),
+    paste(sort(unique(table(valores$participant_id))), collapse = ", "),
+    sum(features$selected_for_model),
+    nrow(resumo_k)
+  )
+)
+kable(visao, col.names = c("Métrica", "Valor"))
+```
+
+# Seleção de atributos
+
+O artigo elimina atributos lentos, incompletos ou pouco discriminantes. O gráfico mostra a duração média dos componentes e a linha de 100 ms adotada no artigo.
+
+```{r duracao-features}
+features %>%
+  filter(!is.na(average_duration_ms)) %>%
+  arrange(average_duration_ms) %>%
+  mutate(feature = factor(feature, levels = feature)) %>%
+  ggplot(aes(x = feature, y = average_duration_ms,
+             shape = selected_for_model)) +
+  geom_point(size = 2.8) +
+  geom_hline(yintercept = 100, linetype = "dashed") +
+  coord_flip() +
+  labs(
+    title = "Duração média de cálculo dos atributos",
+    subtitle = "A linha tracejada representa o limite de 100 ms do artigo",
+    x = "Atributo", y = "Duração média (ms)",
+    shape = "Usado no modelo"
+  ) +
+  theme_minimal()
+```
+
+```{r tabela-features}
+features %>%
+  filter(selected_for_model) %>%
+  select(feature, average_duration_ms, complete_for_all_records,
+         unique_values, coincidence_probability) %>%
+  kable(digits = 4,
+        col.names = c("Atributo", "Duração média (ms)", "Completo",
+                      "Valores únicos", "Probabilidade de coincidência"))
+```
+
+# Probabilidade de autenticação por número de vizinhos
+
+Este gráfico replica a ideia da Figura 2 do artigo. A probabilidade de autenticidade é a proporção dos K vizinhos que pertencem ao participante verdadeiro. A linha horizontal representa a fronteira de decisão de 0,5.
+
+```{r probabilidade-k}
+ggplot(resumo_k,
+       aes(x = k, y = mean_authenticity_probability)) +
+  geom_line() +
+  geom_point(size = 2.8) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  scale_x_continuous(breaks = resumo_k$k) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(
+    title = "Probabilidade média de autenticação por K",
+    subtitle = "Valores acima de 0,5 favorecem a classe autêntica",
+    x = "Número de vizinhos (K)",
+    y = "Probabilidade média de autenticação"
+  ) +
+  theme_minimal()
+```
+
+# Acurácia de identificação por número de vizinhos
+
+```{r acuracia-k}
+ggplot(resumo_k, aes(x = k, y = accuracy)) +
+  geom_line() +
+  geom_point(size = 2.8) +
+  scale_x_continuous(breaks = resumo_k$k) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(
+    title = "Acurácia da identificação por número de vizinhos",
+    subtitle = "Cada coleta foi avaliada por validação leave-one-out",
+    x = "Número de vizinhos (K)",
+    y = "Acurácia"
+  ) +
+  theme_minimal()
+```
+
+# Resultado individual para K = 1
+
+```{r resultado-k1}
+predicoes_k1 <- predicoes %>% filter(k == 1)
+
+resumo_k1 <- predicoes_k1 %>%
+  summarise(
+    total = n(),
+    acertos = sum(correct),
+    erros = sum(!correct),
+    acuracia = mean(correct)
+  )
+
+kable(resumo_k1, digits = 4,
+      col.names = c("Coletas", "Acertos", "Erros", "Acurácia"))
+```
+
+```{r acuracia-participante}
+predicoes_k1 %>%
+  group_by(true_participant) %>%
+  summarise(acuracia = mean(correct), .groups = "drop") %>%
+  ggplot(aes(x = reorder(true_participant, acuracia), y = acuracia)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(
+    title = "Acurácia por participante para K = 1",
+    x = "Participante anonimizado", y = "Acurácia"
+  ) +
+  theme_minimal()
+```
+
+# Matriz de confusão para K = 1
+
+```{r matriz-confusao}
+ggplot(confusao,
+       aes(x = predicted_participant, y = true_participant, fill = count)) +
+  geom_tile() +
+  geom_text(aes(label = count)) +
+  labs(
+    title = "Matriz de confusão para K = 1",
+    x = "Participante previsto", y = "Participante verdadeiro",
+    fill = "Quantidade"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Dados exportados para comparação
+
+Os arquivos CSV produzidos pelo pipeline permitem reproduzir todos os gráficos e comparar diretamente o comportamento observado com o artigo:
+
+- `feature_selection.csv`: critérios de seleção de atributos;
+- `knn_summary_by_k.csv`: probabilidade média, taxa de autenticação e acurácia para cada K;
+- `knn_predictions.csv`: resultado de cada coleta em cada valor de K;
+- `confusion_matrix_k1.csv`: matriz de confusão para K = 1;
+- `selected_feature_values.csv`: tabela anonimizada das features utilizadas.
+
+# Conclusão automática
+
+```{r conclusao, results='asis'}
+melhor <- resumo_k %>% arrange(desc(accuracy), k) %>% slice(1)
+k1 <- resumo_k %>% filter(k == 1) %>% slice(1)
+
+cat(paste0(
+  "Foram avaliadas **", n_distinct(valores$collection_id),
+  "** coletas de **", n_distinct(valores$participant_id),
+  "** participantes anonimizados. "
+))
+cat(paste0(
+  "Para K = 1, a acurácia foi de **",
+  percent(k1$accuracy, accuracy = 0.1), "**. "
+))
+cat(paste0(
+  "O melhor resultado foi obtido com K = **", melhor$k,
+  "**, com acurácia de **", percent(melhor$accuracy, accuracy = 0.1),
+  "** e probabilidade média de autenticação de **",
+  percent(melhor$mean_authenticity_probability, accuracy = 0.1), "**."
+))
+```
