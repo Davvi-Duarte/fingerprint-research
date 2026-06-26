@@ -31,5 +31,7 @@
   "max_neighbors": 9,
   "evaluation": "leave-one-out",
   "classifier": "KNeighborsClassifier",
-  "metric": "euclidean"
+  "metric": "euclidean",
+  "selection_method": "regras_metodologicas_do_artigo",
+  "automatic_selection_has_fixed_feature_limit": false
 }

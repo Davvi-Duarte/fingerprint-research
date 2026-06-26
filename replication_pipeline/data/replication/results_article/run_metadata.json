@@ -14,22 +14,24 @@
     "participant_009": 6,
     "participant_010": 6
   },
-  "feature_mode": "automatic",
+  "feature_mode": "article",
   "selected_features": [
+    "domBlockers",
     "audio",
-    "canvas",
-    "fontPreferences",
-    "languages",
-    "platform",
     "timezone",
-    "vendorFlavors",
-    "webGlBasics",
-    "webGlExtensions"
+    "localStorage",
+    "plugins",
+    "screenResolution_width",
+    "screenResolution_height",
+    "hardwareConcurrency",
+    "platform"
   ],
   "max_duration_ms": 100.0,
   "p_max": 0.5,
   "max_neighbors": 9,
   "evaluation": "leave-one-out",
   "classifier": "KNeighborsClassifier",
-  "metric": "euclidean"
+  "metric": "euclidean",
+  "selection_method": "features_finais_da_figura_1",
+  "automatic_selection_has_fixed_feature_limit": false
 }

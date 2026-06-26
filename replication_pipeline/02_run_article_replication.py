@@ -136,10 +136,18 @@ def feature_statistics(values: pd.DataFrame, durations: pd.DataFrame) -> pd.Data
         complete = bool((~series.map(is_missing)).all())
         average_duration = float(duration.mean()) if duration.notna().any() else np.nan
 
+        duration_available_count = int(duration.notna().sum())
+        all_durations_zero = bool(
+            duration.notna().any() and (duration.dropna() == 0).all()
+        )
+
         rows.append(
             {
                 "feature": feature,
                 "average_duration_ms": average_duration,
+                "duration_available_count": duration_available_count,
+                "duration_complete_for_all_records": duration_available_count == total,
+                "all_durations_zero": all_durations_zero,
                 "complete_for_all_records": complete,
                 "unique_values": int(canonical.nunique(dropna=False)),
                 "max_value_frequency": int(max_frequency),
@@ -157,11 +165,20 @@ def choose_features(
     p_max: float,
 ) -> tuple[list[str], pd.DataFrame]:
     stats = stats.copy()
+    # Regra (1): a duração média precisa existir e ser menor que Tmax.
+    # Uma duração ausente não deve ser aprovada automaticamente.
     stats["passes_duration"] = (
-        stats["average_duration_ms"].isna()
-        | (stats["average_duration_ms"] < max_duration_ms)
+        stats["average_duration_ms"].notna()
+        & (stats["average_duration_ms"] < max_duration_ms)
     )
+
+    # Regras (2) e (3): o valor do atributo deve ter sido calculado
+    # para todas as coletas. Duração igual a zero é válida: vários
+    # componentes rápidos do artigo possuem tempo zero.
     stats["passes_completeness"] = stats["complete_for_all_records"]
+
+    # Regras (4) e (5): P(Sj) = (m - 1) / N, em que m é a maior
+    # frequência observada para um mesmo valor da feature.
     stats["passes_uniqueness"] = stats["coincidence_probability"] < p_max
     stats["selected_automatically"] = (
         stats["passes_duration"]
@@ -180,6 +197,21 @@ def choose_features(
         selected = stats.loc[stats["selected_automatically"], "feature"].tolist()
 
     stats["selected_for_model"] = stats["feature"].isin(selected)
+
+    def exclusion_reason(row: pd.Series) -> str:
+        if bool(row["selected_for_model"]):
+            return ""
+        reasons: list[str] = []
+        if not bool(row["passes_duration"]):
+            reasons.append("duracao")
+        if not bool(row["passes_completeness"]):
+            reasons.append("incompleta")
+        if not bool(row["passes_uniqueness"]):
+            reasons.append("coincidencia")
+        return ";".join(reasons)
+
+    stats["exclusion_reason"] = stats.apply(exclusion_reason, axis=1)
+
     if not selected:
         raise ValueError("Nenhuma feature foi selecionada.")
     return selected, stats
@@ -329,15 +361,20 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("data/replication/results"),
+        default=None,
+        help=(
+            "Diretório de saída. Quando omitido, usa "
+            "data/replication/results_<feature-mode>."
+        ),
     )
     parser.add_argument(
         "--feature-mode",
         choices=["article", "automatic"],
-        default="article",
+        default="automatic",
         help=(
-            "article usa as nove features da Figura 1; automatic aplica os "
-            "critérios de tempo, completude e coincidência."
+            "automatic reaplica as regras metodológicas do artigo sobre todas "
+            "as features disponíveis; article usa diretamente as features "
+            "finais exibidas na Figura 1 apenas como comparação."
         ),
     )
     parser.add_argument("--max-duration-ms", type=float, default=100.0)
@@ -347,6 +384,11 @@ def main() -> None:
 
     if not args.input.exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {args.input.resolve()}")
+
+    if args.output_dir is None:
+        args.output_dir = Path(
+            f"data/replication/results_{args.feature_mode}"
+        )
 
     records = load_dataset(args.input)
     values, durations = flatten_records(records)
@@ -388,6 +430,12 @@ def main() -> None:
         "evaluation": "leave-one-out",
         "classifier": "KNeighborsClassifier",
         "metric": "euclidean",
+        "selection_method": (
+            "regras_metodologicas_do_artigo"
+            if args.feature_mode == "automatic"
+            else "features_finais_da_figura_1"
+        ),
+        "automatic_selection_has_fixed_feature_limit": False,
     }
     with (args.output_dir / "run_metadata.json").open("w", encoding="utf-8") as file:
         json.dump(run_metadata, file, ensure_ascii=False, indent=2)
