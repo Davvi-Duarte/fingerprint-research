@@ -10,16 +10,7 @@ from pathlib import Path
 from typing import Any
 
 TARGET_PARTICIPANTS = [
-    "Luiza Oliveira De Carvalho",
-    "Maria Luiza Andrade Cavalcanti",
-    "Vinícius De Oliveira Porto",
-    "Bruno Grangeiro Bonifácio",
-    "Davvi Duarte Rodrigues",
-    "José Jardel Alves De Medeiros",
-    "David Joshua Galvíncio De Souza",
-    "Walber Wesley Félix De Araújo Filho",
-    "Júlia Oliveira Kanuto Menezes",
-    "Filipe Magno Alves Paiva",
+    "NOMES DOS PARTICIPANTES"
 ]
 
 COLLECTIONS_PER_PARTICIPANT = 6
