@@ -1,0 +1,392 @@
+---
+title: "Replicação do método de identificação por browser fingerprint"
+subtitle: "Seleção de atributos, matriz numérica e KNN"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+params:
+  filtering_dir: "data/intermediate/filtering"
+  filtered_results_dir: "data/results/filtered"
+  article_results_dir: "data/results/article"
+  filtered_matrix_dir: "data/intermediate/matrix_filtered"
+  article_matrix_dir: "data/intermediate/matrix_article"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(jsonlite)
+library(knitr)
+theme_set(theme_bw(base_size = 12))
+
+read_csv_safe <- function(path) {
+  if (!file.exists(path)) stop(paste("Arquivo ausente:", path))
+  readr::read_csv(path, show_col_types = FALSE)
+}
+
+feature_selection <- read_csv_safe(
+  file.path(params$filtering_dir, "feature_selection.csv")
+)
+filtered_summary <- read_csv_safe(
+  file.path(params$filtered_results_dir, "knn_summary_by_k.csv")
+)
+article_summary <- read_csv_safe(
+  file.path(params$article_results_dir, "knn_summary_by_k.csv")
+)
+filtered_predictions <- read_csv_safe(
+  file.path(params$filtered_results_dir, "knn_predictions.csv")
+)
+article_predictions <- read_csv_safe(
+  file.path(params$article_results_dir, "knn_predictions.csv")
+)
+filtered_participants <- read_csv_safe(
+  file.path(params$filtered_results_dir, "participant_metrics_best_k.csv")
+)
+article_participants <- read_csv_safe(
+  file.path(params$article_results_dir, "participant_metrics_best_k.csv")
+)
+filtered_confusion <- read_csv_safe(
+  file.path(params$filtered_results_dir, "confusion_matrix_best_k.csv")
+)
+article_confusion <- read_csv_safe(
+  file.path(params$article_results_dir, "confusion_matrix_best_k.csv")
+)
+
+filtered_meta <- fromJSON(
+  file.path(params$filtered_results_dir, "run_metadata.json")
+)
+article_meta <- fromJSON(
+  file.path(params$article_results_dir, "run_metadata.json")
+)
+filter_meta <- fromJSON(
+  file.path(params$filtering_dir, "selected_features.json")
+)
+
+comparison <- bind_rows(
+  filtered_summary |> mutate(scenario = "Filtragem reaplicada"),
+  article_summary |> mutate(scenario = "Atributos finais do artigo")
+)
+```
+
+# Objetivo
+
+Este relatório compara dois cenários:
+
+1. **Filtragem reaplicada:** todas as features disponíveis são submetidas às regras descritas no artigo.
+2. **Atributos finais do artigo:** o KNN é executado diretamente com as nove colunas da Figura 1.
+
+O conjunto atual possui `r filter_meta$records` coletas de
+`r filter_meta$participants` participantes.
+
+# Decisões de implementação
+
+A seleção segue:
+
+\[
+\overline{T_j} < T_{\max}
+\]
+
+e:
+
+\[
+P(S_j)=\frac{m-1}{N}<P_{\max}
+\]
+
+em que \(m\) é a maior frequência de valores coincidentes e \(N\) é o
+número de coletas. Também se exige valor e duração disponíveis em todas
+as coletas.
+
+Parâmetros desta execução:
+
+```{r}
+tibble(
+  parametro = c("Tmax", "Pmax", "Fonte da unicidade"),
+  valor = c(
+    paste0(filter_meta$max_duration_ms, " ms"),
+    filter_meta$p_max,
+    filter_meta$uniqueness_source
+  )
+) |> kable()
+```
+
+O artigo determina rótulos naturais para valores textuais. Assim, listas,
+objetos, booleanos e textos foram tratados como categorias determinísticas.
+Não foi aplicada normalização de escala porque essa etapa não é descrita
+no artigo.
+
+# Seleção de atributos
+
+```{r}
+tibble(
+  features_avaliadas = nrow(feature_selection),
+  features_selecionadas = sum(feature_selection$selected),
+  features_excluidas = sum(!feature_selection$selected)
+) |> kable()
+```
+
+## Resultado completo das regras
+
+```{r}
+feature_selection |>
+  select(
+    feature, average_duration_ms, values_complete, durations_complete,
+    value_coincidence_probability, duration_coincidence_probability,
+    coincidence_probability_used, selected, exclusion_reason
+  ) |>
+  arrange(desc(selected), coincidence_probability_used) |>
+  kable(digits = 4)
+```
+
+## Tempo médio de cálculo
+
+```{r fig.height=8}
+feature_selection |>
+  mutate(feature = reorder(feature, average_duration_ms)) |>
+  ggplot(aes(average_duration_ms, feature, shape = selected)) +
+  geom_point(size = 2.5) +
+  geom_vline(
+    xintercept = filter_meta$max_duration_ms,
+    linetype = "dashed"
+  ) +
+  labs(
+    x = "Tempo médio (ms)",
+    y = NULL,
+    shape = "Selecionada",
+    title = "Tempo médio de cálculo por feature"
+  )
+```
+
+## Probabilidade de coincidência
+
+```{r fig.height=8}
+feature_selection |>
+  mutate(feature = reorder(feature, coincidence_probability_used)) |>
+  ggplot(aes(coincidence_probability_used, feature, shape = selected)) +
+  geom_point(size = 2.5) +
+  geom_vline(xintercept = filter_meta$p_max, linetype = "dashed") +
+  labs(
+    x = "P(Sj)",
+    y = NULL,
+    shape = "Selecionada",
+    title = "Probabilidade de coincidência usada na filtragem"
+  )
+```
+
+## Motivos de exclusão
+
+```{r}
+feature_selection |>
+  filter(!selected) |>
+  count(exclusion_reason, sort = TRUE) |>
+  kable()
+```
+
+# Comparação das features
+
+```{r}
+filtered_features <- unlist(filtered_meta$features)
+article_features <- unlist(article_meta$features)
+
+full_join(
+  tibble(feature = filtered_features, filtragem = TRUE),
+  tibble(feature = article_features, artigo = TRUE),
+  by = "feature"
+) |>
+  mutate(
+    filtragem = replace_na(filtragem, FALSE),
+    artigo = replace_na(artigo, FALSE),
+    situacao = case_when(
+      filtragem & artigo ~ "Comum aos dois",
+      filtragem ~ "Somente filtragem",
+      TRUE ~ "Somente artigo"
+    )
+  ) |>
+  arrange(situacao, feature) |>
+  kable()
+```
+
+# Desempenho do KNN
+
+O artigo varia \(K\) de 1 a 9. Nesta replicação, cada coleta é avaliada
+por leave-one-out. A probabilidade de autenticidade é operacionalizada
+como a proporção dos \(K\) vizinhos pertencentes à identidade verdadeira.
+
+## Acurácia por K
+
+```{r}
+comparison |>
+  ggplot(aes(k, accuracy, linetype = scenario, shape = scenario)) +
+  geom_line() +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = sort(unique(comparison$k))) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  labs(
+    x = "Número de vizinhos (K)",
+    y = "Acurácia",
+    linetype = "Cenário",
+    shape = "Cenário"
+  )
+```
+
+## Probabilidade média de autenticidade
+
+```{r}
+comparison |>
+  ggplot(aes(
+    k, mean_authenticity_probability,
+    linetype = scenario, shape = scenario
+  )) +
+  geom_hline(yintercept = 0.5, linetype = "dotted") +
+  geom_line() +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = sort(unique(comparison$k))) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  labs(
+    x = "Número de vizinhos (K)",
+    y = "Probabilidade média de autenticidade",
+    linetype = "Cenário",
+    shape = "Cenário"
+  )
+```
+
+## Taxa de autenticação no limiar 0,5
+
+```{r}
+comparison |>
+  ggplot(aes(
+    k, authentication_rate_at_0_5,
+    linetype = scenario, shape = scenario
+  )) +
+  geom_line() +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = sort(unique(comparison$k))) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  labs(
+    x = "Número de vizinhos (K)",
+    y = "Coletas autenticadas",
+    linetype = "Cenário",
+    shape = "Cenário"
+  )
+```
+
+## Síntese dos melhores resultados
+
+```{r}
+best_filtered <- filtered_summary |>
+  arrange(desc(accuracy), desc(mean_authenticity_probability), k) |>
+  slice(1) |>
+  mutate(scenario = "Filtragem reaplicada")
+
+best_article <- article_summary |>
+  arrange(desc(accuracy), desc(mean_authenticity_probability), k) |>
+  slice(1) |>
+  mutate(scenario = "Atributos finais do artigo")
+
+bind_rows(best_filtered, best_article) |>
+  select(
+    scenario, k, accuracy, mean_authenticity_probability,
+    authentication_rate_at_0_5, mean_neighbor_distance
+  ) |>
+  kable(digits = 4)
+```
+
+# Desempenho por participante
+
+```{r fig.height=6}
+bind_rows(
+  filtered_participants |> mutate(scenario = "Filtragem reaplicada"),
+  article_participants |> mutate(scenario = "Atributos finais do artigo")
+) |>
+  ggplot(aes(true_participant, accuracy, shape = scenario, group = scenario)) +
+  geom_point(size = 3, position = position_dodge(width = 0.4)) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  coord_flip() +
+  labs(
+    x = NULL,
+    y = "Acurácia no melhor K",
+    shape = "Cenário"
+  )
+```
+
+# Matrizes de confusão
+
+```{r}
+plot_confusion <- function(data, title) {
+  ggplot(data, aes(predicted_participant, true_participant, fill = count)) +
+    geom_tile() +
+    geom_text(aes(label = count)) +
+    labs(
+      x = "Participante previsto",
+      y = "Participante verdadeiro",
+      title = title
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+plot_confusion(
+  filtered_confusion,
+  paste("Filtragem reaplicada — melhor K =", filtered_meta$best_k)
+)
+```
+
+```{r}
+plot_confusion(
+  article_confusion,
+  paste("Atributos do artigo — melhor K =", article_meta$best_k)
+)
+```
+
+# Achados para discussão
+
+```{r results='asis'}
+common <- intersect(filtered_features, article_features)
+only_filtered <- setdiff(filtered_features, article_features)
+only_article <- setdiff(article_features, filtered_features)
+
+cat(
+  "- A filtragem selecionou **", length(filtered_features),
+  "** features; o cenário da Figura 1 utiliza **",
+  length(article_features), "**.\n", sep = ""
+)
+cat(
+  "- Há **", length(common), "** features em comum entre os cenários.\n",
+  sep = ""
+)
+cat(
+  "- Features selecionadas somente nos dados atuais: ",
+  ifelse(length(only_filtered), paste(only_filtered, collapse = ", "), "nenhuma"),
+  ".\n", sep = ""
+)
+cat(
+  "- Features do artigo que não sobreviveram à filtragem atual: ",
+  ifelse(length(only_article), paste(only_article, collapse = ", "), "nenhuma"),
+  ".\n", sep = ""
+)
+cat(
+  "- Melhor acurácia com filtragem: **",
+  scales::percent(best_filtered$accuracy),
+  "** em K = **", best_filtered$k, "**.\n", sep = ""
+)
+cat(
+  "- Melhor acurácia com atributos do artigo: **",
+  scales::percent(best_article$accuracy),
+  "** em K = **", best_article$k, "**.\n", sep = ""
+)
+```
+
+# Limitações metodológicas
+
+O artigo não informa integralmente:
+
+- como separar treino e teste;
+- como combinar a unicidade dos valores com a unicidade dos tempos;
+- a regra exata para transformar a classificação em probabilidade;
+- se houve normalização das escalas;
+- como tratar listas e objetos complexos.
+
+Por isso, essas decisões foram explicitadas nos metadados e no código.
+O resultado deve ser descrito como **replicação metodológica documentada**,
+e não como reprodução bit a bit do experimento original.
