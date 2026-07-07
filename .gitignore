@@ -29,3 +29,5 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+dados_completos.json
