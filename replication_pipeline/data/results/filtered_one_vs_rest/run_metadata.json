@@ -1,0 +1,33 @@
+{
+  "evaluation": "one-vs-rest",
+  "matrix": "data\\intermediate\\matrix_filtered\\numeric_matrix.csv",
+  "output_dir": "data\\results\\filtered_one_vs_rest",
+  "features": [
+    "audio",
+    "canvas",
+    "fontPreferences",
+    "languages",
+    "platform",
+    "timezone",
+    "vendorFlavors",
+    "webGlBasics",
+    "webGlExtensions"
+  ],
+  "participants": [
+    "participant_001",
+    "participant_002",
+    "participant_003",
+    "participant_004",
+    "participant_005",
+    "participant_006",
+    "participant_007",
+    "participant_008",
+    "participant_009",
+    "participant_010"
+  ],
+  "threshold": 0.5,
+  "max_neighbors": 9,
+  "best_k": 1,
+  "best_mean_accuracy": 0.986,
+  "best_mean_f1": 0.9292800182273867
+}

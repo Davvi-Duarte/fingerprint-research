@@ -1,0 +1,25 @@
+{
+  "method": "article_rule_filter",
+  "equation_1": "mean_duration_j < Tmax",
+  "completeness_rule": "value and duration available for every record",
+  "equation_5": "P(S_j) = (m - 1) / N",
+  "max_duration_ms": 100.0,
+  "p_max": 0.5,
+  "uniqueness_source": "value",
+  "records": 100,
+  "participants": 10,
+  "evaluated_features": 42,
+  "selected_features": [
+    "audio",
+    "canvas",
+    "fontPreferences",
+    "languages",
+    "platform",
+    "timezone",
+    "vendorFlavors",
+    "webGlBasics",
+    "webGlExtensions"
+  ],
+  "selected_count": 9,
+  "implementation_note": "O artigo admite que valor ou tempo pode ser identificador, mas não especifica completamente como combinar os dois sinais. A escolha foi explicitada por --uniqueness-source."
+}

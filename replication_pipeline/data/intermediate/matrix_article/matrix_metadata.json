@@ -1,0 +1,19 @@
+{
+  "scenario": "article_final_features_one_vs_rest",
+  "features": [
+    "domBlockers",
+    "audio",
+    "timezone",
+    "localStorage",
+    "plugins",
+    "screenResolution_width",
+    "screenResolution_height",
+    "hardwareConcurrency",
+    "platform"
+  ],
+  "feature_count": 9,
+  "purpose": "Comparar a seleção obtida nos dados atuais com o cenário em que são utilizados diretamente os atributos finais do artigo original.",
+  "evaluation": "one-vs-rest",
+  "threshold": 0.5,
+  "warning": "Este cenário não reaplica a seleção do artigo aos dados atuais; ele apenas avalia, na nova base, o conjunto de atributos finais descrito no estudo original."
+}

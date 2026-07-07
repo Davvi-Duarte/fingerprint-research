@@ -1,0 +1,82 @@
+{
+  "domBlockers": {
+    "kind": "categorical",
+    "transformation": "natural_number_label",
+    "missing_token": "__MISSING__",
+    "mapping": {
+      "[]": 0,
+      "__MISSING__": 1
+    }
+  },
+  "audio": {
+    "kind": "numeric",
+    "transformation": "identity"
+  },
+  "timezone": {
+    "kind": "categorical",
+    "transformation": "natural_number_label",
+    "missing_token": "__MISSING__",
+    "mapping": {
+      "America/Fortaleza": 0,
+      "America/Recife": 1,
+      "America/Sao_Paulo": 2
+    }
+  },
+  "localStorage": {
+    "kind": "numeric",
+    "transformation": "identity"
+  },
+  "plugins": {
+    "kind": "categorical",
+    "transformation": "natural_number_label",
+    "missing_token": "__MISSING__",
+    "mapping": {
+      "[{\"description\":\"5FCo78mbsWyZrdWTw3jwYUpzhYrVp78e\",\"mimeTypes\":[{\"suffixes\":\"n6l\",\"type\":\"\"},{\"suffixes\":\"n6l\",\"type\":\"\"}],\"name\":\"VxYMOPuf\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"Online doc plug in\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"PDF Viewer\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"Chromium PDF Viewer\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"WebKit built-in PDF\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"Microsoft Edge PDF Viewer\"},{\"description\":\"68eu268mb0DozZz4kxBIr0a0Do7GDBf\",\"mimeTypes\":[{\"suffixes\":\"3bV\",\"type\":\"\"},{\"suffixes\":\"3bV\",\"type\":\"\"}],\"name\":\"WXyZrdO\"}]": 0,
+      "[{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"PDF Viewer\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"Chrome PDF Viewer\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"Chromium PDF Viewer\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"Microsoft Edge PDF Viewer\"},{\"description\":\"Portable Document Format\",\"mimeTypes\":[{\"suffixes\":\"pdf\",\"type\":\"application/pdf\"},{\"suffixes\":\"pdf\",\"type\":\"text/pdf\"}],\"name\":\"WebKit built-in PDF\"}]": 1
+    }
+  },
+  "screenResolution_width": {
+    "kind": "categorical",
+    "transformation": "natural_number_label",
+    "missing_token": "__MISSING__",
+    "mapping": {
+      "1877.0": 0,
+      "1920.0": 1,
+      "2560.0": 2,
+      "792.0": 3,
+      "844.0": 4,
+      "864.0": 5,
+      "900.0": 6,
+      "__MISSING__": 7
+    }
+  },
+  "screenResolution_height": {
+    "kind": "categorical",
+    "transformation": "natural_number_label",
+    "missing_token": "__MISSING__",
+    "mapping": {
+      "1056.0": 0,
+      "1080.0": 1,
+      "1408.0": 2,
+      "1440.0": 3,
+      "1536.0": 4,
+      "390.0": 5,
+      "__MISSING__": 6
+    }
+  },
+  "hardwareConcurrency": {
+    "kind": "numeric",
+    "transformation": "identity"
+  },
+  "platform": {
+    "kind": "categorical",
+    "transformation": "natural_number_label",
+    "missing_token": "__MISSING__",
+    "mapping": {
+      "Linux x86_64": 0,
+      "MacIntel": 1,
+      "Win32": 2,
+      "iPhone": 3
+    }
+  }
+}

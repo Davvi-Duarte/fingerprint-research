@@ -1,0 +1,20 @@
+{
+  "records": 100,
+  "participants": 10,
+  "features": [
+    "audio",
+    "canvas",
+    "fontPreferences",
+    "languages",
+    "platform",
+    "timezone",
+    "vendorFlavors",
+    "webGlBasics",
+    "webGlExtensions"
+  ],
+  "feature_count": 9,
+  "categorical_encoding": "deterministic natural-number labels",
+  "numeric_transformation": "identity",
+  "scaling": "none",
+  "reason_for_no_scaling": "O artigo descreve a substituição de valores textuais por rótulos naturais, mas não descreve normalização de escala."
+}
