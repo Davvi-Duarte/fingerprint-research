@@ -1,0 +1,395 @@
+---
+title: "Análise da Replicação One-vs-Rest"
+author: "Davvi Duarte Rodrigues"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_depth: 3
+params:
+  filtering_dir: "data/intermediate/filtering"
+  filtered_results_dir: "data/results/filtered_one_vs_rest"
+  article_results_dir: "data/results/article_one_vs_rest"
+  filtered_matrix_dir: "data/intermediate/matrix_filtered"
+  article_matrix_dir: "data/intermediate/matrix_article"
+  figures_dir: "figures"
+  export_figures: true
+  fig_width: 7
+  fig_height: 4.2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = params$fig_width,
+  fig.height = params$fig_height,
+  dpi = 300
+)
+
+library(tidyverse)
+library(scales)
+library(jsonlite)
+library(knitr)
+
+theme_set(
+  theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13),
+      plot.subtitle = element_text(size = 10),
+      axis.title = element_text(size = 10),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+)
+
+if (isTRUE(params$export_figures)) {
+  dir.create(params$figures_dir, showWarnings = FALSE, recursive = TRUE)
+}
+
+read_csv_safe <- function(path) {
+  if (!file.exists(path)) {
+    stop(paste("Arquivo não encontrado:", path), call. = FALSE)
+  }
+  readr::read_csv(path, show_col_types = FALSE)
+}
+
+save_plot <- function(plot, filename, width = params$fig_width, height = params$fig_height) {
+  if (isTRUE(params$export_figures)) {
+    ggsave(
+      filename = file.path(params$figures_dir, filename),
+      plot = plot,
+      width = width,
+      height = height,
+      dpi = 300
+    )
+  }
+  plot
+}
+
+percent_br <- function(x, accuracy = 0.1) {
+  scales::percent(x, accuracy = accuracy, decimal.mark = ",")
+}
+```
+
+# 1. Leitura dos artefatos
+
+```{r load-data}
+feature_selection <- read_csv_safe(
+  file.path(params$filtering_dir, "feature_selection.csv")
+)
+
+filtered_summary <- read_csv_safe(
+  file.path(params$filtered_results_dir, "one_vs_rest_summary_by_k.csv")
+)
+
+article_summary <- read_csv_safe(
+  file.path(params$article_results_dir, "one_vs_rest_summary_by_k.csv")
+)
+
+filtered_participants <- read_csv_safe(
+  file.path(params$filtered_results_dir, "one_vs_rest_summary_by_participant.csv")
+)
+
+article_participants <- read_csv_safe(
+  file.path(params$article_results_dir, "one_vs_rest_summary_by_participant.csv")
+)
+
+filtered_predictions <- read_csv_safe(
+  file.path(params$filtered_results_dir, "one_vs_rest_predictions.csv")
+)
+
+article_predictions <- read_csv_safe(
+  file.path(params$article_results_dir, "one_vs_rest_predictions.csv")
+)
+```
+
+```{r helpers}
+# Ajusta nomes de colunas caso alguma versão do script use nomes curtos.
+standardize_summary <- function(df) {
+  df |>
+    rename_with(~ "mean_false_acceptance_rate", any_of("mean_far")) |>
+    rename_with(~ "mean_false_rejection_rate", any_of("mean_frr"))
+}
+
+filtered_summary <- standardize_summary(filtered_summary)
+article_summary <- standardize_summary(article_summary)
+
+comparison <- bind_rows(
+  filtered_summary |> mutate(scenario = "Atributos da replicação"),
+  article_summary |> mutate(scenario = "Atributos do artigo original")
+)
+
+best_filtered <- filtered_summary |>
+  arrange(desc(mean_f1), desc(mean_accuracy), k) |>
+  slice(1) |>
+  mutate(scenario = "Atributos da replicação")
+
+best_article <- article_summary |>
+  arrange(desc(mean_f1), desc(mean_accuracy), k) |>
+  slice(1) |>
+  mutate(scenario = "Atributos do artigo original")
+
+best_scenarios <- bind_rows(best_filtered, best_article)
+```
+
+# 2. Tabela principal de desempenho
+
+```{r performance-table}
+performance_table <- best_scenarios |>
+  transmute(
+    Cenário = scenario,
+    `Melhor K` = k,
+    `Acurácia média` = percent_br(mean_accuracy),
+    `F1 médio` = percent_br(mean_f1),
+    `FAR média` = percent_br(mean_false_acceptance_rate),
+    `FRR média` = percent_br(mean_false_rejection_rate)
+  )
+
+kable(
+  performance_table,
+  caption = "Desempenho médio do KNN em configuração one-vs-rest."
+)
+```
+
+# 3. Gráfico principal: F1-score médio por K
+
+Este é o gráfico mais importante para o artigo, pois compara diretamente o desempenho dos atributos selecionados pela replicação contra os atributos finais do artigo original.
+
+```{r fig-f1-by-k}
+p_f1_by_k <- comparison |>
+  ggplot(aes(x = k, y = mean_f1, linetype = scenario, shape = scenario)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = sort(unique(comparison$k))) +
+  scale_y_continuous(labels = percent_format(decimal.mark = ","), limits = c(0, 1)) +
+  labs(
+    title = "F1-score médio por K em configuração one-vs-rest",
+    subtitle = "Comparação entre atributos selecionados na replicação e atributos finais do artigo original",
+    x = "Número de vizinhos (K)",
+    y = "F1-score médio",
+    linetype = "Cenário",
+    shape = "Cenário"
+  )
+
+save_plot(p_f1_by_k, "fig_f1_score_por_k.png")
+```
+
+**Legenda sugerida para o artigo:** F1-score médio do KNN em configuração one-vs-rest para diferentes valores de K.
+
+# 4. Gráfico de acurácia média por K
+
+Este gráfico é complementar. Ele mostra que ambos os cenários possuem alta acurácia, mas deve ser interpretado junto com o F1-score, FAR e FRR por causa do desbalanceamento do one-vs-rest.
+
+```{r fig-accuracy-by-k}
+p_accuracy_by_k <- comparison |>
+  ggplot(aes(x = k, y = mean_accuracy, linetype = scenario, shape = scenario)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(breaks = sort(unique(comparison$k))) +
+  scale_y_continuous(labels = percent_format(decimal.mark = ","), limits = c(0.90, 1)) +
+  labs(
+    title = "Acurácia média por K em configuração one-vs-rest",
+    subtitle = "A acurácia deve ser analisada junto com F1, FAR e FRR",
+    x = "Número de vizinhos (K)",
+    y = "Acurácia média",
+    linetype = "Cenário",
+    shape = "Cenário"
+  )
+
+save_plot(p_accuracy_by_k, "fig_acuracia_por_k.png")
+```
+
+**Legenda sugerida para o artigo:** Acurácia média do KNN em configuração one-vs-rest para diferentes valores de K.
+
+# 5. Gráfico de FAR e FRR no melhor K
+
+Este gráfico é recomendado para discutir autenticação, pois mostra os erros mais importantes: aceitar indevidamente outro usuário e rejeitar o usuário autêntico.
+
+```{r fig-far-frr-best-k}
+best_error_rates <- best_scenarios |>
+  select(
+    scenario,
+    k,
+    mean_false_acceptance_rate,
+    mean_false_rejection_rate
+  ) |>
+  pivot_longer(
+    cols = c(mean_false_acceptance_rate, mean_false_rejection_rate),
+    names_to = "metric",
+    values_to = "value"
+  ) |>
+  mutate(
+    metric = recode(
+      metric,
+      mean_false_acceptance_rate = "FAR: falsa aceitação",
+      mean_false_rejection_rate = "FRR: falsa rejeição"
+    ),
+    scenario_label = paste0(scenario, "\nK=", k)
+  )
+
+p_far_frr <- best_error_rates |>
+  ggplot(aes(x = scenario_label, y = value, shape = metric, group = metric)) +
+  geom_point(size = 3, position = position_dodge(width = 0.45)) +
+  scale_y_continuous(labels = percent_format(decimal.mark = ","), limits = c(0, 0.20)) +
+  coord_flip() +
+  labs(
+    title = "FAR e FRR no melhor K de cada cenário",
+    subtitle = "Taxas de erro mais relevantes para uma tarefa de autenticação",
+    x = NULL,
+    y = "Taxa média",
+    shape = "Métrica"
+  )
+
+save_plot(p_far_frr, "fig_far_frr_melhor_k.png")
+```
+
+**Legenda sugerida para o artigo:** Taxas médias de falsa aceitação e falsa rejeição nos melhores valores de K de cada cenário.
+
+# 6. Sobreposição entre atributos do artigo e da replicação
+
+```{r attribute-overlap-data}
+article_features <- c(
+  "domBlockers",
+  "audio",
+  "timezone",
+  "localStorage",
+  "plugins",
+  "screenResolution_width",
+  "screenResolution_height",
+  "hardwareConcurrency",
+  "platform"
+)
+
+selected_col <- if ("selected" %in% names(feature_selection)) "selected" else stop("Coluna 'selected' não encontrada em feature_selection.csv")
+feature_col <- if ("feature" %in% names(feature_selection)) "feature" else names(feature_selection)[1]
+
+replication_features <- feature_selection |>
+  filter(.data[[selected_col]] == TRUE | .data[[selected_col]] == "True" | .data[[selected_col]] == "true" | .data[[selected_col]] == 1) |>
+  pull(.data[[feature_col]]) |>
+  as.character()
+
+overlap_counts <- tibble(
+  Categoria = c("Em comum", "Apenas no artigo", "Apenas na replicação"),
+  Quantidade = c(
+    length(intersect(article_features, replication_features)),
+    length(setdiff(article_features, replication_features)),
+    length(setdiff(replication_features, article_features))
+  )
+)
+```
+
+```{r fig-attribute-overlap}
+p_overlap <- overlap_counts |>
+  ggplot(aes(x = reorder(Categoria, Quantidade), y = Quantidade)) +
+  geom_col(width = 0.65) +
+  geom_text(aes(label = Quantidade), hjust = -0.2, size = 4) +
+  coord_flip() +
+  scale_y_continuous(breaks = 0:max(overlap_counts$Quantidade), expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Sobreposição entre atributos do artigo e da replicação",
+    subtitle = "Apenas três atributos aparecem nos dois conjuntos finais",
+    x = NULL,
+    y = "Quantidade de atributos"
+  )
+
+save_plot(p_overlap, "fig_sobreposicao_atributos.png")
+```
+
+**Legenda sugerida para o artigo:** Sobreposição entre os atributos finais do artigo original e os atributos selecionados nesta replicação.
+
+# 7. Motivos de exclusão dos atributos
+
+```{r fig-exclusion-reasons}
+if ("exclusion_reason" %in% names(feature_selection)) {
+  exclusion_reasons <- feature_selection |>
+    mutate(
+      exclusion_reason = if_else(
+        is.na(exclusion_reason) | exclusion_reason == "" | selected == TRUE,
+        "Selecionado",
+        exclusion_reason
+      )
+    ) |>
+    count(exclusion_reason, sort = TRUE)
+
+  p_exclusion <- exclusion_reasons |>
+    ggplot(aes(x = reorder(exclusion_reason, n), y = n)) +
+    geom_col(width = 0.7) +
+    geom_text(aes(label = n), hjust = -0.2, size = 3.5) +
+    coord_flip() +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+    labs(
+      title = "Motivos de seleção ou exclusão dos atributos",
+      subtitle = "Resumo dos filtros de tempo, completude e unicidade",
+      x = NULL,
+      y = "Quantidade de atributos"
+    )
+
+  save_plot(p_exclusion, "fig_motivos_exclusao.png", width = 7, height = 4.8)
+} else {
+  message("Coluna 'exclusion_reason' não encontrada. Gráfico de motivos de exclusão não gerado.")
+}
+```
+
+**Legenda sugerida para o artigo:** Distribuição dos motivos de seleção ou exclusão dos atributos após a aplicação dos filtros metodológicos.
+
+# 8. Desempenho por participante no melhor K
+
+Este gráfico é opcional. Ele pode ser usado no relatório complementar ou em apêndice, pois mostra quais participantes foram mais fáceis ou difíceis de autenticar.
+
+```{r fig-f1-participant-best-k}
+standardize_participants <- function(df) {
+  df |>
+    rename_with(~ "false_acceptance_rate", any_of("far")) |>
+    rename_with(~ "false_rejection_rate", any_of("frr"))
+}
+
+filtered_participants <- standardize_participants(filtered_participants)
+article_participants <- standardize_participants(article_participants)
+
+best_participants <- bind_rows(
+  filtered_participants |>
+    filter(k == best_filtered$k[1]) |>
+    mutate(scenario = "Atributos da replicação"),
+  article_participants |>
+    filter(k == best_article$k[1]) |>
+    mutate(scenario = "Atributos do artigo original")
+)
+
+participant_col <- case_when(
+  "target_participant" %in% names(best_participants) ~ "target_participant",
+  "participant_id" %in% names(best_participants) ~ "participant_id",
+  TRUE ~ NA_character_
+)
+
+if (!is.na(participant_col)) {
+  p_participant_f1 <- best_participants |>
+    ggplot(aes(x = reorder(.data[[participant_col]], f1), y = f1, shape = scenario)) +
+    geom_point(size = 2.5, position = position_dodge(width = 0.45)) +
+    coord_flip() +
+    scale_y_continuous(labels = percent_format(decimal.mark = ","), limits = c(0, 1)) +
+    labs(
+      title = "F1-score por participante no melhor K",
+      subtitle = "Comparação entre os dois cenários experimentais",
+      x = "Participante",
+      y = "F1-score",
+      shape = "Cenário"
+    )
+
+  save_plot(p_participant_f1, "fig_f1_por_participante.png", width = 7, height = 5)
+} else {
+  message("Coluna de participante não encontrada. Gráfico por participante não gerado.")
+}
+```
+
+# 9. Arquivos gerados
+
+Se `params$export_figures` estiver definido como `true`, os gráficos principais serão salvos em:
+
+```{r list-figures, results='asis'}
+if (isTRUE(params$export_figures)) {
+  figs <- list.files(params$figures_dir, pattern = "\\.png$", full.names = FALSE)
+  cat(paste0("- `", file.path(params$figures_dir, figs), "`", collapse = "\n"))
+}
+```
