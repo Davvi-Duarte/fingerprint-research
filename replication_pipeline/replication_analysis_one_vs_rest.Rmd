@@ -108,11 +108,16 @@ article_predictions <- read_csv_safe(
 ```{r helpers}
 # Ajusta nomes de colunas caso alguma versão do script use nomes curtos.
 standardize_summary <- function(df) {
-  df |>
-    rename_with(~ "mean_false_acceptance_rate", any_of("mean_far")) |>
-    rename_with(~ "mean_false_rejection_rate", any_of("mean_frr"))
-}
+  if ("mean_far" %in% names(df) && !"mean_false_acceptance_rate" %in% names(df)) {
+    df <- df |> rename(mean_false_acceptance_rate = mean_far)
+  }
 
+  if ("mean_frr" %in% names(df) && !"mean_false_rejection_rate" %in% names(df)) {
+    df <- df |> rename(mean_false_rejection_rate = mean_frr)
+  }
+
+  df
+}
 filtered_summary <- standardize_summary(filtered_summary)
 article_summary <- standardize_summary(article_summary)
 
