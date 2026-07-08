@@ -345,9 +345,15 @@ Este gráfico é opcional. Ele pode ser usado no relatório complementar ou em a
 
 ```{r fig-f1-participant-best-k}
 standardize_participants <- function(df) {
-  df |>
-    rename_with(~ "false_acceptance_rate", any_of("far")) |>
-    rename_with(~ "false_rejection_rate", any_of("frr"))
+  if ("far" %in% names(df) && !"false_acceptance_rate" %in% names(df)) {
+    df <- df |> rename(false_acceptance_rate = far)
+  }
+
+  if ("frr" %in% names(df) && !"false_rejection_rate" %in% names(df)) {
+    df <- df |> rename(false_rejection_rate = frr)
+  }
+
+  df
 }
 
 filtered_participants <- standardize_participants(filtered_participants)
