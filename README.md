@@ -6,7 +6,7 @@ Replicação metodológica adaptada do artigo:
 > Salomatin, Iskhakov & Iskhakova
 
 Aplicação web para coleta consentida de browser fingerprints em ambiente acadêmico controlado.  
-Os dados coletados serão usados para reprodução parcial do experimento com algoritmo KNN.
+Os dados coletados são usados para reprodução parcial do experimento com algoritmo KNN.
 
 ---
 
@@ -21,8 +21,10 @@ Os dados coletados serão usados para reprodução parcial do experimento com al
 7. [Testar uma coleta](#testar-uma-coleta)
 8. [Rotas da API](#rotas-da-api)
 9. [Exportar dados para pré-processamento e KNN](#exportar-dados-para-pré-processamento-e-knn)
-10. [Deploy em produção](#deploy-em-produção)
-11. [Cuidados éticos incorporados](#cuidados-éticos-incorporados)
+10. [Pipeline de replicação](#pipeline-de-replicação)
+11. [Relatório estatístico (R)](#relatório-estatístico-r)
+12. [Deploy em produção](#deploy-em-produção)
+13. [Cuidados éticos incorporados](#cuidados-éticos-incorporados)
 
 ---
 
@@ -61,6 +63,21 @@ fingerprint-research/
 │   ├── tsconfig.json
 │   ├── Dockerfile
 │   └── .env.example
+├── replication_pipeline/         # Pipeline de replicação
+│   ├── 00_prepare_anonymized_sample.py
+│   ├── 01_filter_article_rules.py
+│   ├── 02_build_numeric_matrix.py
+│   ├── 03_train_knn.py
+│   ├── 04_run_article_features.py
+│   ├── replication_common.py     # Funções compartilhadas
+│   ├── run_all.py                # Executa todas as etapas
+│   ├── replication_analysis_one_vs_rest.Rmd
+│   ├── requirements.txt
+│   ├── data/
+│   │   ├── input/                # Dataset anonimizado
+│   │   ├── intermediate/         # Artefatos intermediários
+│   │   └── results/              # Resultados finais
+│   └── figures/                  # Gráficos (PNG, 300 dpi)
 ├── docker-compose.yml
 ├── .env.example
 ├── .gitignore
@@ -76,6 +93,7 @@ fingerprint-research/
 | Docker + Docker Compose | 24+ / 2.20+ |
 | Node.js (sem Docker) | 20+ |
 | Python (sem Docker) | 3.11+ |
+| R (para relatório) | 4.3+ |
 | PostgreSQL (opcional) | 15+ |
 
 ---
@@ -303,58 +321,100 @@ curl "http://localhost:5000/api/export?format=csv" -o dados_resumidos.csv
 curl "http://localhost:5000/api/export?format=json&include_raw=true" > dados_completos.json
 ```
 
-### Passo 3 — Pré-processamento em Python (exemplo)
+---
 
-```python
-import json
-import pandas as pd
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+## Pipeline de replicação
 
-# Carregue os dados exportados
-with open("dados_completos.json") as f:
-    data = json.load(f)
+O pipeline em `replication_pipeline/` reproduce a metodologia do artigo em etapas auditáveis:
 
-records = data["records"]
-
-# Extraia features dos components do FingerprintJS
-rows = []
-for r in records:
-    components = r.get("components", {}) or {}
-    row = {
-        "participant_id": r["participant_id"],
-        "visitor_id": r.get("visitor_id"),
-        "duration_total_ms": r.get("duration_total_ms"),
-        # Extraia atributos relevantes dos components
-        "platform": components.get("platform", {}).get("value"),
-        "timezone": components.get("timezone", {}).get("value"),
-        "language": components.get("languages", {}).get("value"),
-        "screen_resolution": str(components.get("screenResolution", {}).get("value")),
-        "color_depth": components.get("colorDepth", {}).get("value"),
-        "hardware_concurrency": components.get("hardwareConcurrency", {}).get("value"),
-        # Adicione outros atributos conforme necessário
-    }
-    rows.append(row)
-
-df = pd.DataFrame(rows)
-
-# Encode categóricos
-le = LabelEncoder()
-for col in df.select_dtypes(include="object").columns:
-    if col != "participant_id":
-        df[col] = le.fit_transform(df[col].astype(str))
-
-# Prepare X e y para KNN
-X = df.drop(columns=["participant_id"])
-y = df["participant_id"]
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-knn = KNeighborsClassifier(n_neighbors=3)
-knn.fit(X_train, y_train)
-print(f"Acurácia KNN: {knn.score(X_test, y_test):.2%}")
 ```
+dados_completos.json  →  00  Anonimização  →  01  Seleção de atributos
+                                                    ↓
+                        04  KNN (artigo)  ←  03  KNN  ←  02  Matriz numérica
+```
+
+### Executar tudo de uma vez
+
+```bash
+cd replication_pipeline
+python -m venv .venv
+source .venv/bin/activate      # Linux/macOS
+# .venv\Scripts\activate       # Windows
+
+pip install -r requirements.txt
+python run_all.py
+```
+
+### Ou etapa por etapa
+
+```bash
+# 0. Anonimizar o dataset (remove nomes, visitorId, confidence)
+python 00_prepare_anonymized_sample.py
+
+# 1. Filtrar atributos conforme regras do artigo (Eq. 1, 4, 5)
+python 01_filter_article_rules.py
+
+# 2. Construir matriz numérica com rótulos naturais
+python 02_build_numeric_matrix.py
+
+# 3. Treinar e avaliar KNN — cenário A: atributos selecionados pela replicação
+python 03_train_knn.py
+
+# 4. Avaliar KNN — cenário B: atributos finais do artigo original
+python 04_run_article_features.py
+```
+
+### Parâmetros da etapa 01
+
+```bash
+python 01_filter_article_rules.py --uniqueness-source value    # padrão (usa valores)
+python 01_filter_article_rules.py --uniqueness-source duration # usa tempos
+python 01_filter_article_rules.py --uniqueness-source either   # aprova se valor OU tempo passa
+```
+
+### Artefatos gerados
+
+| Caminho | Descrição |
+|---|---|
+| `data/input/anonymous_fingerprints.json` | Dataset anonimizado |
+| `data/intermediate/filtering/feature_selection.csv` | Estatísticas e resultado por feature |
+| `data/intermediate/filtering/selected_features.json` | Lista de features selecionadas |
+| `data/intermediate/matrix_filtered/` | Matriz numérica (cenário A) + mappings |
+| `data/intermediate/matrix_article/` | Matriz numérica (cenário B) + mappings |
+| `data/results/filtered_one_vs_rest/` | Resultados do cenário A |
+| `data/results/article_one_vs_rest/` | Resultados do cenário B |
+| `data/results/statistical_analysis_summary.csv` | Testes estatísticos pareados |
+| `figures/` | Gráficos PNG (300 dpi) |
+
+---
+
+## Relatório estatístico (R)
+
+O R Markdown em `replication_pipeline/replication_analysis_one_vs_rest.Rmd` gera um relatório HTML com tabelas e gráficos comparando os dois cenários.
+
+### Instalar dependências
+
+```r
+install.packages(c("rmarkdown", "tidyverse", "jsonlite", "knitr", "scales"))
+```
+
+### Renderizar
+
+```bash
+cd replication_pipeline
+Rscript -e "rmarkdown::render('replication_analysis_one_vs_rest.Rmd')"
+```
+
+### Figuras geradas em `figures/`
+
+| Arquivo | Descrição |
+|---|---|
+| `fig_f1_score_por_k.png` | F1-score médio por K |
+| `fig_acuracia_por_k.png` | Acurácia média por K |
+| `fig_far_frr_melhor_k.png` | FAR e FRR no melhor K |
+| `fig_sobreposicao_atributos.png` | Sobreposição de atributos entre artigo e replicação |
+| `fig_motivos_exclusao.png` | Motivos de exclusão dos atributos |
+| `fig_f1_por_participante.png` | F1-score por participante |
 
 ---
 
